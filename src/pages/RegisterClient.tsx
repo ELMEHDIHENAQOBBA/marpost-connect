@@ -226,7 +226,7 @@ const RegisterClient = () => {
                     name="cin"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>CIN</FormLabel>
+                        <FormLabel>Numéro de pièce d'identité</FormLabel>
                         <FormControl>
                           <Input placeholder="A123456" {...field} />
                         </FormControl>
