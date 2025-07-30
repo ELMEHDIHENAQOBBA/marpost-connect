@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,17 +10,18 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 
 interface ColisAColleter {
-  id: string;
-  code: string;
-  expediteur: string;
-  telephoneExpediteur: string;
-  adresseRamassage: string;
-  quartier: string;
-  poids: string;
-  dateEnvoi: string;
-  destinataire: string;
+  id: number;
+  code_suivi: string;
+  client_nom: string;
+  client_prenom: string;
+  tel_destinataire: string;
+  adresse_destinataire: string;
+  quartier_nom: string;
+  poids: number;
+  date_depot: string;
+  nom_destinataire: string;
   destination: string;
-  status: "en_attente" | "collecte";
+  statut: string;
 }
 
 const FacteurDashboard = () => {
@@ -36,59 +37,58 @@ const FacteurDashboard = () => {
 
   const loadColis = async () => {
     try {
-      // TODO: API GET /api/colis/to-pickup
-      // const response = await axios.get('/api/colis/to-pickup');
-      // setColisAColleter(response.data.filter(c => c.status === 'en_attente'));
-      // setColisCollectes(response.data.filter(c => c.status === 'collecte'));
+      setIsLoading(true);
+      
+      // Récupérer tous les colis avec les informations des clients et quartiers
+      const { data: colisData, error } = await (supabase as any)
+        .from('colis')
+        .select(`
+          id,
+          code_suivi,
+          poids,
+          date_depot,
+          nom_destinataire,
+          tel_destinataire,
+          adresse_destinataire,
+          statut,
+          client:client_id (
+            nom,
+            prenom
+          ),
+          quartier:quartier_id (
+            nom,
+            ville:ville_id (
+              nom
+            )
+          )
+        `)
+        .order('date_depot', { ascending: true });
 
-      // Données simulées
-      setTimeout(() => {
-        const mockColis: ColisAColleter[] = [
-          {
-            id: "1",
-            code: "PM20250129001234",
-            expediteur: "Ahmed Benali",
-            telephoneExpediteur: "+212612345678",
-            adresseRamassage: "123 Rue Mohammed V, Agdal",
-            quartier: "Agdal",
-            poids: "2.5 kg",
-            dateEnvoi: "2024-01-29",
-            destinataire: "Fatima Alaoui",
-            destination: "Casablanca",
-            status: "en_attente"
-          },
-          {
-            id: "2",
-            code: "PM20250129002345",
-            expediteur: "Omar Nejjar",
-            telephoneExpediteur: "+212656789012",
-            adresseRamassage: "45 Avenue Hassan II, Agdal",
-            quartier: "Agdal",
-            poids: "1.8 kg",
-            dateEnvoi: "2024-01-29",
-            destinataire: "Youssef Mansouri",
-            destination: "Fès",
-            status: "en_attente"
-          },
-          {
-            id: "3",
-            code: "PM20250128005678",
-            expediteur: "Aicha Benali",
-            telephoneExpediteur: "+212667890123",
-            adresseRamassage: "78 Rue Al Barid, Agdal",
-            quartier: "Agdal",
-            poids: "3.2 kg",
-            dateEnvoi: "2024-01-28",
-            destinataire: "Mohammed Alami",
-            destination: "Marrakech",
-            status: "collecte"
-          }
-        ];
-        
-        setColisAColleter(mockColis.filter(c => c.status === "en_attente"));
-        setColisCollectes(mockColis.filter(c => c.status === "collecte"));
-        setIsLoading(false);
-      }, 1000);
+      if (error) {
+        throw error;
+      }
+
+      // Transformer les données pour l'interface
+      const transformedColis: ColisAColleter[] = (colisData || []).map(colis => ({
+        id: colis.id,
+        code_suivi: colis.code_suivi,
+        client_nom: colis.client?.nom || '',
+        client_prenom: colis.client?.prenom || '',
+        tel_destinataire: colis.tel_destinataire || '',
+        adresse_destinataire: colis.adresse_destinataire || '',
+        quartier_nom: colis.quartier?.nom || '',
+        poids: colis.poids,
+        date_depot: colis.date_depot,
+        nom_destinataire: colis.nom_destinataire || '',
+        destination: colis.quartier?.ville?.nom || '',
+        statut: colis.statut || 'En attente'
+      }));
+
+      // Filtrer par statut
+      setColisAColleter(transformedColis.filter(c => c.statut === 'En attente'));
+      setColisCollectes(transformedColis.filter(c => c.statut === 'Collecté'));
+      
+      setIsLoading(false);
     } catch (error) {
       setIsLoading(false);
       toast({
@@ -99,21 +99,28 @@ const FacteurDashboard = () => {
     }
   };
 
-  const marquerCommeCollecte = async (colisId: string) => {
+  const marquerCommeCollecte = async (colisId: number) => {
     try {
-      // TODO: API PATCH /api/colis/:id/status
-      // await axios.patch(`/api/colis/${colisId}/status`, { status: 'collecte' });
+      // Mettre à jour le statut dans la base de données
+      const { error } = await (supabase as any)
+        .from('colis')
+        .update({ statut: 'Collecté' })
+        .eq('id', colisId);
 
-      // Simulation de mise à jour
+      if (error) {
+        throw error;
+      }
+
+      // Mettre à jour l'état local
       const colis = colisAColleter.find(c => c.id === colisId);
       if (colis) {
-        colis.status = "collecte";
+        colis.statut = "Collecté";
         setColisAColleter(prev => prev.filter(c => c.id !== colisId));
         setColisCollectes(prev => [...prev, colis]);
         
         toast({
           title: "Colis collecté !",
-          description: `Le colis ${colis.code} a été marqué comme collecté`,
+          description: `Le colis ${colis.code_suivi} a été marqué comme collecté`,
         });
       }
     } catch (error) {
@@ -129,7 +136,7 @@ const FacteurDashboard = () => {
     const totalAColleter = colisAColleter.length;
     const totalCollectes = colisCollectes.length;
     const poidsTotal = [...colisAColleter, ...colisCollectes]
-      .reduce((sum, c) => sum + parseFloat(c.poids.replace(' kg', '')), 0);
+      .reduce((sum, c) => sum + c.poids, 0);
 
     return [
       { 
@@ -152,7 +159,7 @@ const FacteurDashboard = () => {
       },
       { 
         title: "Quartier", 
-        value: "Agdal", 
+        value: colisAColleter[0]?.quartier_nom || "Tous secteurs", 
         icon: <MapPin className="h-5 w-5 text-purple-500" />,
         color: "text-purple-500"
       },
@@ -176,7 +183,7 @@ const FacteurDashboard = () => {
             </div>
           </div>
           <Badge variant="outline" className="text-lg px-4 py-2">
-            Zone: Agdal, Rabat
+            Zone: {colisAColleter[0]?.quartier_nom || "Tous secteurs"}
           </Badge>
         </div>
 
@@ -253,32 +260,32 @@ const FacteurDashboard = () => {
                               <Badge variant="outline" className="font-mono">
                                 #{index + 1}
                               </Badge>
-                              <h4 className="font-semibold">{colis.code}</h4>
-                              <Badge variant="secondary">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {new Date(colis.dateEnvoi).toLocaleDateString('fr-FR')}
-                              </Badge>
+                              <h4 className="font-semibold">{colis.code_suivi}</h4>
+                                <Badge variant="secondary">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {new Date(colis.date_depot).toLocaleDateString('fr-FR')}
+                                </Badge>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                               <div className="space-y-2">
                                 <div className="flex items-center space-x-2">
                                   <User className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>Expéditeur:</strong> {colis.expediteur}</span>
+                                  <span><strong>Expéditeur:</strong> {colis.client_prenom} {colis.client_nom}</span>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <Phone className="h-4 w-4 text-muted-foreground" />
-                                  <span>{colis.telephoneExpediteur}</span>
+                                  <span>{colis.tel_destinataire}</span>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                                  <span>{colis.adresseRamassage}</span>
+                                  <span>{colis.adresse_destinataire}</span>
                                 </div>
                               </div>
                               <div className="space-y-2">
-                                <p><strong>Destinataire:</strong> {colis.destinataire}</p>
+                                <p><strong>Destinataire:</strong> {colis.nom_destinataire}</p>
                                 <p><strong>Destination:</strong> {colis.destination}</p>
-                                <p><strong>Poids:</strong> {colis.poids}</p>
+                                <p><strong>Poids:</strong> {colis.poids} kg</p>
                               </div>
                             </div>
                           </div>
@@ -324,7 +331,7 @@ const FacteurDashboard = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center space-x-3 mb-2">
-                              <h4 className="font-semibold">{colis.code}</h4>
+                              <h4 className="font-semibold">{colis.code_suivi}</h4>
                               <Badge variant="secondary" className="bg-green-100 text-green-800">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 Collecté
@@ -333,7 +340,7 @@ const FacteurDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                               <div>
                                 <span className="text-muted-foreground">Expéditeur:</span>
-                                <p className="font-medium">{colis.expediteur}</p>
+                                <p className="font-medium">{colis.client_prenom} {colis.client_nom}</p>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Destination:</span>
@@ -341,7 +348,7 @@ const FacteurDashboard = () => {
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Poids:</span>
-                                <p className="font-medium">{colis.poids}</p>
+                                <p className="font-medium">{colis.poids} kg</p>
                               </div>
                             </div>
                           </div>
